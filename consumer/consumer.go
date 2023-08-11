@@ -65,9 +65,8 @@ func KafkaGoConsumer(topic string, limit int) {
 	}()
 	temp := &Message{}
 	msgCount := 0
-	start := time.Now()
 	var rows [][]interface{}
-	for time.Since(start) < time.Second && msgCount < limit {
+	for time.Since(time.Now()) < time.Second && msgCount < limit {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
 			logrus.Errorf("ReadMessage: %v", err)
