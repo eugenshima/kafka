@@ -1,3 +1,4 @@
+// Package main is an Entry point to Kafka consumer
 package main
 
 import (
@@ -6,6 +7,7 @@ import (
 )
 
 func main() {
-	topic := kafkaConfig.CONST_TOPIC
-	consumer.KafkaGoConsumer(topic)
+	topic := kafkaConfig.ConstTopic
+	limit := kafkaConfig.ConstLimitMsg
+	consumer.KafkaGoConsumer(topic, limit)
 }

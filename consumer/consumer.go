@@ -1,18 +1,22 @@
+// Package consumer contains consume functions
 package consumer
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
+	"time"
+
+	kafkaConfig "github.com/eugenshima/kafka/config"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	kafka "github.com/segmentio/kafka-go"
 	"github.com/sirupsen/logrus"
 )
 
-var mu sync.Mutex
+var rows [][]interface{}
 
 // NewDBPsql function provides Connection with PostgreSQL database
 func NewDBPsql() (*pgxpool.Pool, error) {
@@ -33,67 +37,83 @@ func NewDBPsql() (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// Message struct represents a message in a Kafka cluster
 type Message struct {
 	ID      uuid.UUID `json:"id"`
 	Message int       `json:"message"`
 }
 
-func KafkaGoConsumer(topic string) {
+// KafkaGoConsumer receives messages to Kafka Cluster
+func KafkaGoConsumer(topic string, limit int) {
 	pool, err := NewDBPsql()
 
 	if err != nil {
 		logrus.Errorf("NewDBPsql: %v", err)
 	}
+	defer pool.Close()
 	partition := 0
 	fmt.Println("Kafka topic:", topic)
 	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:   []string{"localhost:9092"},
+		Brokers:   []string{kafkaConfig.ConstHost},
 		Topic:     topic,
 		Partition: partition,
-		MinBytes:  10e3,
-		MaxBytes:  10e6,
 	})
-	defer r.Close()
-	r.SetOffset(0)
-	for {
+	defer func() {
+		err := r.Close()
+		if err != nil {
+			logrus.Errorf("Close: %v", err)
+			return
+		}
+	}()
+	temp := &Message{}
+	msgCount := 0
+	start := time.Now()
+	for time.Since(start) < time.Second && msgCount < limit {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
 			logrus.Errorf("ReadMessage: %v", err)
 			break
 		}
-
 		fmt.Printf("message at offset %d: %s = %s\n", m.Offset,
 			string(m.Key), string(m.Value))
-		temp := Message{}
+
 		err = json.Unmarshal(m.Value, &temp)
 		if err != nil {
-			logrus.WithFields(logrus.Fields{"value:": m.Value, "temp: ": &temp}).Errorf("Unmarshal: %v", err)
+			logrus.WithFields(logrus.Fields{"value:": m.Value, "temp:": &temp}).Errorf("Unmarshal: %v", err)
 			break
 		}
-		go func() {
-			mu.Lock()
-			err = Create(context.Background(), &temp, pool)
-			if err != nil {
-				logrus.WithFields(logrus.Fields{"temp: ": &temp}).Errorf("Create: %v", err)
-			}
-			mu.Unlock()
-		}()
 
+		if err != nil {
+			return
+		}
+		rows = append(rows, []interface{}{
+			temp.ID,
+			temp.Message,
+		})
 		fmt.Printf("%T\n", temp)
+		msgCount++
 	}
+	err = Create(context.Background(), temp, pool, limit)
+	if err != nil {
+		logrus.WithFields(logrus.Fields{"temp: ": &temp}).Errorf("Create: %v", err)
+
+	}
+	fmt.Println("timer ends... received messages: ", msgCount)
 }
 
-// Create function executes SQL request to insert person into database
-func Create(ctx context.Context, entity *Message, pool *pgxpool.Pool) error {
-
-	entity.ID = uuid.New()
-
-	bd, err := pool.Exec(ctx,
-		`INSERT INTO kafka.kafka_storage (id, kafka_message) 
-	VALUES($1,$2)`,
-		entity.ID, entity.Message)
-	if err != nil && !bd.Insert() {
-		return fmt.Errorf("Exec(): %w", err)
+// Create function executes SQL request to insert Kafka message into database
+func Create(ctx context.Context, entity *Message, pool *pgxpool.Pool, limit int) error {
+	_, err := pool.CopyFrom(
+		context.Background(),
+		pgx.Identifier{"kafka", "kafka_storage"},
+		[]string{"id", "kafka_message"},
+		pgx.CopyFromRows(rows),
+	)
+	if err != nil {
+		return fmt.Errorf("CopyFrom: %W", err)
 	}
+
+	fmt.Println()
+
 	return nil
 }

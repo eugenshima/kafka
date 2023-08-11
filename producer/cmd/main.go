@@ -1,3 +1,4 @@
+// Package main is an Entry point to Kafka producer
 package main
 
 import (
@@ -6,7 +7,7 @@ import (
 )
 
 func main() {
-	topic := kafkaConfig.CONST_TOPIC
-	limit := kafkaConfig.CONST_LIMIT_MSG
+	topic := kafkaConfig.ConstTopic
+	limit := kafkaConfig.ConstLimitMsg
 	producer.KafkaGoProducer(topic, limit)
 }

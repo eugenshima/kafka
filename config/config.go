@@ -1,7 +1,9 @@
+// Package config provides configuration constants for Kafka
 package config
 
+// Constants for Kafka
 const (
-	CONST_HOST      = "localhost:9092"
-	CONST_TOPIC     = "my-topic-2"
-	CONST_LIMIT_MSG = 200
+	ConstHost     = "localhost:9092"
+	ConstTopic    = "random-int"
+	ConstLimitMsg = 2000
 )

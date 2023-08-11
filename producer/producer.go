@@ -1,3 +1,4 @@
+// Package producer contains produce functions
 package producer
 
 import (
@@ -5,44 +6,69 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-
 	"time"
+
+	kafkaConfig "github.com/eugenshima/kafka/config"
 
 	"github.com/google/uuid"
 	kafka "github.com/segmentio/kafka-go"
+	"github.com/sirupsen/logrus"
 )
 
+// Message struct represents a message in a Kafka cluster
 type Message struct {
 	ID      uuid.UUID `json:"id"`
 	Message int       `json:"message"`
 }
 
+// random function generates a random number between min & max
 func random(min, max int) int {
 	return rand.Intn(max-min) + min
 }
+
+// KafkaGoProducer function produces messages to Kafka Cluster
 func KafkaGoProducer(topic string, limit int) {
 	MIN := 100
 	MAX := 1000
 	TOTAL := limit
 	partition := 0
 	conn, err := kafka.DialLeader(context.Background(), "tcp",
-		"localhost:9092", topic, partition)
+		kafkaConfig.ConstHost, topic, partition)
 	if err != nil {
-		fmt.Printf("%s\n", err)
+		logrus.WithFields(logrus.Fields{"topic:": topic, "partition:": partition}).Errorf("DialLeader: %v", err)
 		return
 	}
-	defer conn.Close()
-	for i := 0; i < TOTAL; i++ {
+	defer func() {
+		err = conn.Close()
+		if err != nil {
+			logrus.Errorf("Close: %v", err)
+			return
+		}
+	}()
+	msgCount := 0
+	start := time.Now()
+
+	// _, err := conn.WriteMessages(context.Background(), message)
+	// if err != nil {
+	// 	logrus.Errorf("WriteMessages: %v", err)
+	// 	msgCount++
+	// }
+	for time.Since(start) < time.Second && msgCount < TOTAL {
 		myrand := random(MIN, MAX)
 		temp := Message{uuid.New(), myrand}
 		recordJSON, _ := json.Marshal(temp)
-		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
-		conn.WriteMessages(
-			kafka.Message{Value: []byte(recordJSON)},
-		)
-		if i%50 == 0 {
-			fmt.Print(".")
+		err = conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		if err != nil {
+			logrus.Errorf("SetWriteDeadline: %v", err)
+			break
 		}
-
+		_, err := conn.WriteMessages(kafka.Message{Value: recordJSON})
+		if err != nil {
+			logrus.Errorf("WriteMessages: %v", err)
+			break
+		}
+		msgCount++
 	}
+	fmt.Println("timer ends... sent messages: ", msgCount)
+
 }
