@@ -6,23 +6,23 @@ import (
 	"fmt"
 	"math/rand"
 
-	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	kafka "github.com/segmentio/kafka-go"
 )
 
-type Record struct {
-	Name   string `json:"name"`
-	Random int    `json:"random"`
+type Message struct {
+	ID      uuid.UUID `json:"id"`
+	Message int       `json:"message"`
 }
 
 func random(min, max int) int {
 	return rand.Intn(max-min) + min
 }
 func KafkaGoProducer(topic string, limit int) {
-	MIN := 20
-	MAX := 100
+	MIN := 100
+	MAX := 1000
 	TOTAL := limit
 	partition := 0
 	conn, err := kafka.DialLeader(context.Background(), "tcp",
@@ -31,9 +31,10 @@ func KafkaGoProducer(topic string, limit int) {
 		fmt.Printf("%s\n", err)
 		return
 	}
+	defer conn.Close()
 	for i := 0; i < TOTAL; i++ {
 		myrand := random(MIN, MAX)
-		temp := Record{strconv.Itoa(i), myrand}
+		temp := Message{uuid.New(), myrand}
 		recordJSON, _ := json.Marshal(temp)
 		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
 		conn.WriteMessages(
@@ -41,10 +42,7 @@ func KafkaGoProducer(topic string, limit int) {
 		)
 		if i%50 == 0 {
 			fmt.Print(".")
-
 		}
 
 	}
-	fmt.Println()
-	conn.Close()
 }
