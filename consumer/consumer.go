@@ -16,8 +16,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var rows [][]interface{}
-
 // NewDBPsql function provides Connection with PostgreSQL database
 func NewDBPsql() (*pgxpool.Pool, error) {
 	// Initialization a connect configuration for a PostgreSQL using pgx driver
@@ -46,11 +44,11 @@ type Message struct {
 // KafkaGoConsumer receives messages to Kafka Cluster
 func KafkaGoConsumer(topic string, limit int) {
 	pool, err := NewDBPsql()
-
 	if err != nil {
 		logrus.Errorf("NewDBPsql: %v", err)
 	}
 	defer pool.Close()
+
 	partition := 0
 	fmt.Println("Kafka topic:", topic)
 	r := kafka.NewReader(kafka.ReaderConfig{
@@ -59,7 +57,7 @@ func KafkaGoConsumer(topic string, limit int) {
 		Partition: partition,
 	})
 	defer func() {
-		err := r.Close()
+		err = r.Close()
 		if err != nil {
 			logrus.Errorf("Close: %v", err)
 			return
@@ -68,6 +66,7 @@ func KafkaGoConsumer(topic string, limit int) {
 	temp := &Message{}
 	msgCount := 0
 	start := time.Now()
+	var rows [][]interface{}
 	for time.Since(start) < time.Second && msgCount < limit {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
@@ -93,18 +92,17 @@ func KafkaGoConsumer(topic string, limit int) {
 		fmt.Printf("%T\n", temp)
 		msgCount++
 	}
-	err = Create(context.Background(), temp, pool, limit)
+	err = Create(context.Background(), pool, rows)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{"temp: ": &temp}).Errorf("Create: %v", err)
-
 	}
 	fmt.Println("timer ends... received messages: ", msgCount)
 }
 
 // Create function executes SQL request to insert Kafka message into database
-func Create(ctx context.Context, entity *Message, pool *pgxpool.Pool, limit int) error {
+func Create(ctx context.Context, pool *pgxpool.Pool, rows [][]interface{}) error {
 	_, err := pool.CopyFrom(
-		context.Background(),
+		ctx,
 		pgx.Identifier{"kafka", "kafka_storage"},
 		[]string{"id", "kafka_message"},
 		pgx.CopyFromRows(rows),

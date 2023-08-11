@@ -46,14 +46,8 @@ func KafkaGoProducer(topic string, limit int) {
 		}
 	}()
 	msgCount := 0
-	start := time.Now()
-
-	// _, err := conn.WriteMessages(context.Background(), message)
-	// if err != nil {
-	// 	logrus.Errorf("WriteMessages: %v", err)
-	// 	msgCount++
-	// }
-	for time.Since(start) < time.Second && msgCount < TOTAL {
+	startTimer := time.Now()
+	for time.Since(startTimer) < time.Second && msgCount < TOTAL {
 		myrand := random(MIN, MAX)
 		temp := Message{uuid.New(), myrand}
 		recordJSON, _ := json.Marshal(temp)
@@ -70,5 +64,4 @@ func KafkaGoProducer(topic string, limit int) {
 		msgCount++
 	}
 	fmt.Println("timer ends... sent messages: ", msgCount)
-
 }
